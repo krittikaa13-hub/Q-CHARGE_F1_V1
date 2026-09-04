@@ -52,11 +52,33 @@ export const ReceiverView: React.FC<ReceiverViewProps> = ({
   );
 
   const isPendingRequest =
-    currentReceiver?.assignedType === 'v2v' &&
-    currentReceiver?.assignmentStatus === 'pending' &&
+    (currentReceiver?.assignedType === 'v2v' ||
+      currentReceiver?.assignmentStatus === 'V2V_REQUESTED' ||
+      currentReceiver?.assignmentStatus === 'V2V_PENDING') &&
+    (currentReceiver?.assignmentStatus === 'pending' ||
+      currentReceiver?.assignmentStatus === 'V2V_REQUESTED' ||
+      currentReceiver?.assignmentStatus === 'V2V_PENDING') &&
     !activeSession;
 
+  const isConfirmedOrInitializing =
+    !activeSession &&
+    (currentReceiver?.assignmentStatus === 'V2V_CONFIRMED' ||
+      currentReceiver?.assignmentStatus === 'V2V_INITIALIZING' ||
+      currentReceiver?.assignmentStatus === 'TRANSFER_READY');
+
+  const isEnergyReceived = currentReceiver?.assignmentStatus === 'ENERGY_RECEIVED';
+
+  const isNavigatingToStation =
+    currentReceiver?.assignmentStatus === 'NAVIGATING_TO_STATION' ||
+    (currentReceiver?.assignedType === 'station' && currentReceiver?.assignmentStatus !== 'CHARGING' && currentReceiver?.assignmentStatus !== 'CHARGING_COMPLETED');
+
+  const isCharging = currentReceiver?.assignmentStatus === 'CHARGING';
+  const isChargingCompleted = currentReceiver?.assignmentStatus === 'CHARGING_COMPLETED';
+
   const isStationAssigned =
+    isNavigatingToStation ||
+    isCharging ||
+    isChargingCompleted ||
     currentReceiver?.assignedType === 'station' ||
     currentReceiver?.status === 'charging_station';
 
@@ -67,6 +89,11 @@ export const ReceiverView: React.FC<ReceiverViewProps> = ({
       recommendation.primaryTargetId,
       currentReceiver.energyDemandKwh || 12
     );
+  };
+
+  const handleCancelRequest = () => {
+    if (!currentReceiver) return;
+    simulation.cancelReceiverRequest(currentReceiver.id);
   };
 
   const handleNavigateToStation = (stationId: string) => {
@@ -207,13 +234,111 @@ export const ReceiverView: React.FC<ReceiverViewProps> = ({
         {/* PENDING REQUEST STATE */}
         {isPendingRequest && !activeSession && (
           <div className="p-4 rounded-xl bg-cyan-950/60 border border-cyan-700 text-xs space-y-2">
-            <div className="flex items-center gap-2 text-cyan-300 font-bold font-mono">
-              <span className="w-2 h-2 rounded-full bg-cyan-400 animate-ping"></span>
-              <span>V2V REQUEST DISPATCHED</span>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 text-cyan-300 font-bold font-mono">
+                <span className="w-2 h-2 rounded-full bg-cyan-400 animate-ping"></span>
+                <span>V2V REQUEST DISPATCHED</span>
+              </div>
+              <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-cyan-900 text-cyan-200 border border-cyan-600">
+                REQUESTED
+              </span>
             </div>
             <p className="text-slate-300">
-              Request sent to donor <strong className="text-white">{currentReceiver.assignedToId}</strong>.
-              Waiting for donor acceptance to start high-speed inductive energy transfer.
+              Energy request sent to donor <strong className="text-white">{currentReceiver.assignedToId}</strong>.
+              Awaiting donor acceptance to start high-speed energy transfer.
+            </p>
+            <button
+              onClick={handleCancelRequest}
+              className="mt-1 text-[11px] text-rose-400 hover:text-rose-300 font-mono underline"
+            >
+              Cancel Request
+            </button>
+          </div>
+        )}
+
+        {/* V2V CONFIRMED / INITIALIZING STATE */}
+        {isConfirmedOrInitializing && (
+          <div className="p-4 rounded-xl bg-emerald-950/40 border border-emerald-500/60 text-xs space-y-2">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 text-emerald-300 font-bold font-mono">
+                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
+                <span>V2V CONFIRMED</span>
+              </div>
+              <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-900 text-emerald-200 border border-emerald-600">
+                {currentReceiver.assignmentStatus === 'V2V_INITIALIZING' ? 'INITIALIZING' : 'CONFIRMED'}
+              </span>
+            </div>
+            <p className="text-slate-300">
+              Donor <strong className="text-white">{currentReceiver.assignedToId}</strong> accepted request. Safety constraints validated. Transfer relays engaging...
+            </p>
+          </div>
+        )}
+
+        {/* ENERGY RECEIVED SUCCESS STATE */}
+        {isEnergyReceived && (
+          <div className="p-4 rounded-xl bg-emerald-950/50 border border-emerald-500 text-xs space-y-1.5">
+            <div className="flex items-center gap-2 text-emerald-400 font-bold font-mono">
+              <CheckCircle2 className="w-4 h-4" />
+              <span>ENERGY RECEIVED</span>
+            </div>
+            <p className="text-slate-300">
+              V2V transfer successfully completed. Receiver battery restored to <strong className="text-emerald-300">{Math.round(currentReceiver.soc)}% SOC</strong>.
+            </p>
+          </div>
+        )}
+
+        {/* NAVIGATING TO CHARGING STATION */}
+        {isNavigatingToStation && (
+          <div className="p-4 rounded-xl bg-amber-950/40 border border-amber-500/60 text-xs space-y-2">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 text-amber-300 font-bold font-mono">
+                <Navigation className="w-4 h-4 animate-spin text-amber-400" />
+                <span>NAVIGATING TO CHARGING STATION</span>
+              </div>
+              <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-amber-900 text-amber-200 border border-amber-600">
+                EN ROUTE
+              </span>
+            </div>
+            <p className="text-slate-300">
+              Route locked to station <strong className="text-white">{currentReceiver.assignedToId}</strong>. Real-time telemetry monitoring approach.
+            </p>
+          </div>
+        )}
+
+        {/* CHARGING AT STATION */}
+        {isCharging && (
+          <div className="p-4 rounded-xl bg-emerald-950/40 border border-emerald-500/60 text-xs space-y-2.5">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 text-emerald-300 font-bold font-mono">
+                <Zap className="w-4 h-4 animate-pulse text-emerald-400" />
+                <span>DC FAST CHARGING ACTIVE</span>
+              </div>
+              <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-900 text-emerald-200 border border-emerald-600">
+                {Math.round(currentReceiver.soc)}% SOC
+              </span>
+            </div>
+            <div className="w-full h-2 bg-emerald-950 rounded-full overflow-hidden border border-emerald-800">
+              <div
+                className="h-full bg-emerald-500 transition-all duration-300"
+                style={{ width: `${currentReceiver.soc}%` }}
+              />
+            </div>
+            <div className="flex items-center justify-between text-slate-300 font-mono text-[11px]">
+              <span>Station: {currentReceiver.assignedToId}</span>
+              <span className="text-emerald-400 font-bold">150 kW DC Fast</span>
+            </div>
+          </div>
+        )}
+
+        {/* CHARGING COMPLETED */}
+        {isChargingCompleted && (
+          <div className="p-4 rounded-xl bg-emerald-950/50 border border-emerald-500 text-xs space-y-1.5">
+            <div className="flex items-center gap-2 text-emerald-400 font-bold font-mono">
+              <CheckCircle2 className="w-4 h-4" />
+              <span>STATION CHARGING COMPLETED</span>
+            </div>
+            <p className="text-slate-300">
+              Rapid DC Fast charge completed. Battery restored to <strong className="text-emerald-300">{Math.round(currentReceiver.soc)}% SOC</strong>. Vehicle ready for dispatch.
             </p>
           </div>
         )}

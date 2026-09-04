@@ -141,10 +141,29 @@ export default function App() {
     }
   };
 
+  const handleDemoDecline = () => {
+    simulation.declineV2VRequest('EV-007', 'EV-014');
+  };
+
+  const handleDemoFailure = () => {
+    simulation.simulateTransferFailure();
+  };
+
+  const handleDemoStepEvent = () => {
+    const step = simulation.stepDemoEvent();
+    if (step <= 10) {
+      setSelectedVehicleId('EV-014');
+      setFocusTarget({ lat: 37.3365, lng: -121.8900, zoom: 15 });
+    } else {
+      setSelectedVehicleId('EV-021');
+      setFocusTarget({ lat: 37.3225, lng: -121.9475, zoom: 15 });
+    }
+  };
+
   const currentReceiver = vehicles.find((v) => v.id === 'EV-014') || null;
   const currentDonor = vehicles.find((v) => v.id === 'EV-007') || null;
   const activeV2VSession = activeSessions.find((s) => s.status === 'active') || null;
-  const isV2VPending = vehicles.some((v) => v.assignedType === 'v2v' && v.assignmentStatus === 'pending');
+  const isV2VPending = vehicles.some((v) => v.assignedType === 'v2v' && (v.assignmentStatus === 'pending' || v.assignmentStatus === 'V2V_PENDING' || v.assignmentStatus === 'V2V_REQUESTED'));
   const isStationNavigating = vehicles.some((v) => v.assignedType === 'station');
 
   return (
@@ -157,7 +176,7 @@ export default function App() {
         onOpenDemoGuide={() => setIsDemoGuideOpen(true)}
       />
 
-      {/* Demo Controls Toolbar (Requirement 14) */}
+      {/* Demo Controls Toolbar (Requirement 14 & Scenarios 1-37) */}
       <DemoControlBar
         onResetDemo={handleDemoReset}
         onCreateReceiver={handleDemoCreateReceiver}
@@ -166,6 +185,11 @@ export default function App() {
         onAcceptV2V={handleDemoAcceptV2V}
         onStartTransfer={handleDemoStartTransfer}
         onSendToStation={handleDemoSendToStation}
+        onDeclineV2V={handleDemoDecline}
+        onSimulateFailure={handleDemoFailure}
+        onStepDemoEvent={handleDemoStepEvent}
+        currentDemoStep={simulation.getDemoStep()}
+        lastActionMessage={simulation.getLastActionMessage()}
         currentReceiver={currentReceiver}
         currentDonor={currentDonor}
         activeSession={activeV2VSession}

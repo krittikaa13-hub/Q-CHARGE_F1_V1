@@ -201,8 +201,33 @@ export const FleetMap: React.FC<FleetMapProps> = ({
       if (ev.assignedToId && ev.assignedType === 'v2v') {
         const partner = vehicles.find((v) => v.id === ev.assignedToId);
         // Draw line once from receiver to donor to avoid double draw
-        if (partner && (ev.status === 'receiver_needed' || ev.status === 'v2v_active')) {
-          const isActive = ev.status === 'v2v_active' || partner.status === 'v2v_active';
+        if (
+          partner &&
+          (ev.status === 'receiver_needed' ||
+            ev.status === 'v2v_active' ||
+            ev.assignmentStatus === 'V2V_REQUESTED' ||
+            ev.assignmentStatus === 'V2V_CONFIRMED' ||
+            ev.assignmentStatus === 'V2V_INITIALIZING' ||
+            ev.assignmentStatus === 'TRANSFER_READY' ||
+            ev.assignmentStatus === 'TRANSFER_PAUSED')
+        ) {
+          const isActive =
+            ev.status === 'v2v_active' ||
+            partner.status === 'v2v_active' ||
+            ev.assignmentStatus === 'V2V_ACTIVE' ||
+            partner.assignmentStatus === 'V2V_ACTIVE';
+          const isInitializing =
+            ev.assignmentStatus === 'V2V_INITIALIZING' ||
+            partner.assignmentStatus === 'V2V_INITIALIZING';
+          const isConfirmed =
+            ev.assignmentStatus === 'V2V_CONFIRMED' ||
+            partner.assignmentStatus === 'V2V_CONFIRMED' ||
+            ev.assignmentStatus === 'TRANSFER_READY' ||
+            partner.assignmentStatus === 'TRANSFER_READY';
+          const isPaused =
+            ev.assignmentStatus === 'TRANSFER_PAUSED' ||
+            partner.assignmentStatus === 'TRANSFER_PAUSED';
+
           const session = activeSessions.find(
             (s) =>
               (s.donorId === ev.id && s.receiverId === partner.id) ||
@@ -216,7 +241,7 @@ export const FleetMap: React.FC<FleetMapProps> = ({
               [ev.lat, ev.lng],
             ],
             {
-              color: isActive ? '#c084fc' : '#a855f7',
+              color: isActive ? '#c084fc' : isConfirmed ? '#10b981' : '#a855f7',
               weight: isActive ? 4 : 2.5,
               opacity: 0.9,
               dashArray: isActive ? '8, 8' : '4, 6',
@@ -228,26 +253,53 @@ export const FleetMap: React.FC<FleetMapProps> = ({
           const midLat = (partner.lat + ev.lat) / 2;
           const midLng = (partner.lng + ev.lng) / 2;
 
-          const badgeHtml = isActive
-            ? `
+          let badgeHtml = '';
+          if (isActive) {
+            badgeHtml = `
               <div class="px-2 py-0.5 rounded-full bg-purple-950/95 border border-purple-400 text-purple-200 text-[10px] font-mono shadow-xl whitespace-nowrap flex items-center gap-1.5 backdrop-blur-sm -translate-x-1/2 -translate-y-1/2 animate-pulse">
                 <span class="w-1.5 h-1.5 rounded-full bg-purple-400 animate-ping"></span>
                 <span>${partner.id} ➔ ${ev.id}</span>
-                <span class="text-purple-300 font-bold">${session ? `${session.progressPct}%` : 'TRANSFER'}</span>
+                <span class="text-purple-300 font-bold">${session ? `${session.progressPct}%` : 'ACTIVE'}</span>
                 <span class="text-[9px] text-purple-400">20kW · 94%</span>
               </div>
-            `
-            : `
-              <div class="px-1.5 py-0.5 rounded bg-slate-900/90 border border-purple-500/50 text-purple-300 text-[9px] font-mono shadow whitespace-nowrap -translate-x-1/2 -translate-y-1/2">
-                ${partner.id} ↔ ${ev.id} (Proposed V2V)
+            `;
+          } else if (isPaused) {
+            badgeHtml = `
+              <div class="px-2 py-0.5 rounded bg-amber-950/95 border border-amber-400 text-amber-200 text-[9px] font-mono shadow whitespace-nowrap -translate-x-1/2 -translate-y-1/2 flex items-center gap-1">
+                <span class="w-1.5 h-1.5 rounded-full bg-amber-400 animate-ping"></span>
+                <span>${partner.id} ↔ ${ev.id}</span>
+                <span class="font-bold text-amber-300">PAUSED (RECONNECTING)</span>
               </div>
             `;
+          } else if (isInitializing) {
+            badgeHtml = `
+              <div class="px-2 py-0.5 rounded bg-indigo-950/95 border border-indigo-400 text-indigo-200 text-[9px] font-mono shadow whitespace-nowrap -translate-x-1/2 -translate-y-1/2 flex items-center gap-1 animate-pulse">
+                <span class="w-1.5 h-1.5 rounded-full bg-indigo-400"></span>
+                <span>${partner.id} ➔ ${ev.id}</span>
+                <span class="font-bold text-indigo-300">INITIALIZING (CHECKING)</span>
+              </div>
+            `;
+          } else if (isConfirmed) {
+            badgeHtml = `
+              <div class="px-2 py-0.5 rounded bg-emerald-950/95 border border-emerald-400 text-emerald-200 text-[9px] font-mono shadow whitespace-nowrap -translate-x-1/2 -translate-y-1/2 flex items-center gap-1">
+                <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+                <span>${partner.id} ➔ ${ev.id}</span>
+                <span class="font-bold text-emerald-300">V2V CONFIRMED</span>
+              </div>
+            `;
+          } else {
+            badgeHtml = `
+              <div class="px-1.5 py-0.5 rounded bg-slate-900/90 border border-purple-500/50 text-purple-300 text-[9px] font-mono shadow whitespace-nowrap -translate-x-1/2 -translate-y-1/2">
+                ${partner.id} ↔ ${ev.id} (V2V REQUESTED)
+              </div>
+            `;
+          }
 
           const midIcon = L.divIcon({
             className: 'v2v-badge',
             html: badgeHtml,
-            iconSize: [120, 20],
-            iconAnchor: [60, 10],
+            iconSize: [130, 20],
+            iconAnchor: [65, 10],
           });
 
           linesLayer.addLayer(polyline);
@@ -259,17 +311,18 @@ export const FleetMap: React.FC<FleetMapProps> = ({
       if (ev.assignedToId && ev.assignedType === 'station') {
         const station = stations.find((s) => s.id === ev.assignedToId);
         if (station) {
+          const isStationCharging = ev.assignmentStatus === 'CHARGING';
           const routeLine = L.polyline(
             [
               [ev.lat, ev.lng],
               [station.lat, station.lng],
             ],
             {
-              color: '#f97316',
+              color: isStationCharging ? '#10b981' : '#f97316',
               weight: 3,
               opacity: 0.85,
-              dashArray: '6, 6',
-              className: 'station-route-line',
+              dashArray: isStationCharging ? undefined : '6, 6',
+              className: isStationCharging ? '' : 'station-route-line',
             }
           );
 
@@ -279,13 +332,19 @@ export const FleetMap: React.FC<FleetMapProps> = ({
           const routeBadge = L.divIcon({
             className: 'station-route-badge',
             html: `
-              <div class="px-2 py-0.5 rounded bg-orange-950/90 border border-orange-500 text-orange-200 text-[9px] font-mono shadow whitespace-nowrap -translate-x-1/2 -translate-y-1/2 flex items-center gap-1">
+              <div class="px-2 py-0.5 rounded ${
+                isStationCharging
+                  ? 'bg-emerald-950/90 border border-emerald-500 text-emerald-200'
+                  : 'bg-orange-950/90 border border-orange-500 text-orange-200'
+              } text-[9px] font-mono shadow whitespace-nowrap -translate-x-1/2 -translate-y-1/2 flex items-center gap-1">
                 <span>➔ ${station.id.replace('ST-', 'Station #')}</span>
-                <span class="text-orange-400">En Route</span>
+                <span class="${isStationCharging ? 'text-emerald-400 font-bold' : 'text-orange-400'}">
+                  ${isStationCharging ? `Charging (${Math.round(ev.soc)}%)` : 'En Route'}
+                </span>
               </div>
             `,
-            iconSize: [110, 18],
-            iconAnchor: [55, 9],
+            iconSize: [120, 18],
+            iconAnchor: [60, 9],
           });
 
           linesLayer.addLayer(routeLine);

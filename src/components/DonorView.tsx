@@ -49,7 +49,18 @@ export const DonorView: React.FC<DonorViewProps> = ({
 
   const isPendingRequest =
     currentDonor?.assignmentStatus === 'pending' ||
-    (!activeSession && currentDonor?.id === 'EV-007');
+    currentDonor?.assignmentStatus === 'V2V_REQUESTED' ||
+    currentDonor?.assignmentStatus === 'V2V_PENDING' ||
+    (!activeSession &&
+      currentDonor?.id === 'EV-007' &&
+      !currentDonor?.assignmentStatus &&
+      currentDonor?.assignedToId === 'EV-014');
+
+  const isInitializing =
+    currentDonor?.assignmentStatus === 'TRANSFER_READY' ||
+    currentDonor?.assignmentStatus === 'V2V_INITIALIZING';
+
+  const isCompleted = currentDonor?.assignmentStatus === 'DONATION_COMPLETED';
 
   const handleAccept = () => {
     if (!currentDonor || !receiverPartner) return;
@@ -247,8 +258,42 @@ export const DonorView: React.FC<DonorViewProps> = ({
           </div>
         )}
 
+        {/* V2V INITIALIZING / TRANSFER READY STATE */}
+        {!activeSession && isInitializing && (
+          <div className="p-4 rounded-2xl bg-indigo-950/50 border border-indigo-500/50 shadow-xl space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-xs uppercase font-mono font-bold tracking-wider text-indigo-300 flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-indigo-400 animate-ping"></span>
+                <span>V2V Session Initializing</span>
+              </span>
+              <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-indigo-900/80 text-indigo-200 border border-indigo-600">
+                {currentDonor.assignmentStatus === 'TRANSFER_READY' ? 'TRANSFER READY' : 'VALIDATING'}
+              </span>
+            </div>
+            <div className="space-y-1.5 text-xs text-slate-300 bg-slate-950/70 p-3 rounded-xl border border-indigo-900/40 font-mono">
+              <div className="text-emerald-400">✓ Handshake established with {receiverPartner?.id || 'EV-014'}</div>
+              <div className="text-emerald-400">✓ Donor SOC ({Math.round(currentDonor.soc)}%) verified above 30% reserve</div>
+              <div className="text-emerald-400">✓ Link calibrated (20 kW, 94% efficiency)</div>
+              <div className="text-cyan-300 animate-pulse">⟳ Engaging power transfer relays...</div>
+            </div>
+          </div>
+        )}
+
+        {/* DONATION COMPLETED BANNER */}
+        {isCompleted && (
+          <div className="p-4 rounded-2xl bg-emerald-950/40 border border-emerald-500/50 shadow-xl space-y-2">
+            <div className="flex items-center gap-2 text-emerald-400 font-bold font-mono text-xs">
+              <Check className="w-4 h-4" />
+              <span>DONATION COMPLETED</span>
+            </div>
+            <p className="text-xs text-slate-300 font-sans">
+              12.0 kWh successfully transferred. Donor battery safely preserved at {Math.round(currentDonor.soc)}% SOC (above 30% minimum reserve).
+            </p>
+          </div>
+        )}
+
         {/* INCOMING V2V REQUEST CARD (Section 7) */}
-        {!activeSession && receiverPartner && (
+        {!activeSession && !isInitializing && !isCompleted && receiverPartner && isPendingRequest && (
           <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800 shadow-xl space-y-3.5">
             <div className="flex items-center justify-between">
               <span className="text-xs uppercase font-mono font-bold tracking-wider text-cyan-400 flex items-center gap-1.5">

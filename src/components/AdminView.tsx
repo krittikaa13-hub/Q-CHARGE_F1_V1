@@ -606,16 +606,28 @@ export const AdminView: React.FC<AdminViewProps> = ({
                             </span>
                             <span
                               className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold ${
-                                record.status === 'Active'
-                                  ? 'bg-emerald-950 text-emerald-300 border border-emerald-800 animate-pulse'
-                                  : record.status === 'Charging'
-                                  ? 'bg-amber-950 text-amber-300 border border-amber-800'
-                                  : record.status === 'Navigating'
+                                record.status === 'Active' || record.status === 'V2V_ACTIVE'
+                                  ? 'bg-purple-950 text-purple-300 border border-purple-800 animate-pulse'
+                                  : record.status === 'Charging' || record.status === 'CHARGING'
+                                  ? 'bg-amber-950 text-amber-300 border border-amber-800 animate-pulse'
+                                  : record.status === 'Navigating' || record.status === 'NAVIGATING_TO_STATION'
                                   ? 'bg-orange-950 text-orange-300 border border-orange-800'
+                                  : record.status === 'V2V_PENDING' || record.status === 'Pending' || record.status === 'V2V_REQUESTED'
+                                  ? 'bg-cyan-950 text-cyan-300 border border-cyan-800'
+                                  : record.status === 'V2V_ACCEPTED' || record.status === 'V2V_CONFIRMED' || record.status === 'TRANSFER_READY'
+                                  ? 'bg-emerald-950 text-emerald-300 border border-emerald-800'
+                                  : record.status === 'V2V_INITIALIZING'
+                                  ? 'bg-indigo-950 text-indigo-300 border border-indigo-800 animate-pulse'
+                                  : record.status === 'COMPLETED' || record.status === 'V2V_COMPLETED' || record.status === 'CHARGING_COMPLETED'
+                                  ? 'bg-teal-950 text-teal-300 border border-teal-800'
+                                  : record.status === 'TRANSFER_PAUSED'
+                                  ? 'bg-amber-950 text-amber-300 border border-amber-800 animate-ping'
+                                  : record.status === 'V2V_DECLINED' || record.status === 'V2V_FAILED' || record.status === 'DONOR_UNAVAILABLE'
+                                  ? 'bg-rose-950 text-rose-300 border border-rose-800'
                                   : 'bg-slate-800 text-slate-300'
                               }`}
                             >
-                              {record.status}
+                              {record.status.replace(/_/g, ' ')}
                             </span>
                           </div>
                         </div>

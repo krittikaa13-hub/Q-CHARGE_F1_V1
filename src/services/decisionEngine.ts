@@ -36,7 +36,7 @@ export function evaluateDonorsForReceiver(
   allVehicles: EVVehicle[]
 ): DonorEvaluation[] {
   const potentialDonors = allVehicles.filter(
-    (v) => v.id !== receiver.id && (v.status === 'donor_available' || v.soc >= 60)
+    (v) => v.id !== receiver.id && (v.status === 'donor_available' || v.soc >= 50 || v.availableEnergyKwh > 0)
   );
 
   const evaluations: DonorEvaluation[] = potentialDonors.map((donor) => {
@@ -58,49 +58,71 @@ export function evaluateDonorsForReceiver(
     const rejectionReasons: string[] = [];
     let feasible = true;
 
-    // Check Distance constraint (max ~4.5 km for practical rapid V2V)
+    // 1. Check Distance constraint (Scenario 7: Max V2V range 5.0 km)
     if (distanceKm <= 2.0) {
       positiveReasons.push(`Close proximity (${distanceKm} km away)`);
-    } else if (distanceKm > 4.5) {
+    } else if (distanceKm > 5.0) {
       feasible = false;
-      rejectionReasons.push(`Too far (${distanceKm} km away > 4.5 km limit)`);
+      rejectionReasons.push(`Rejected — outside V2V operating range (${distanceKm} km > 5.0 km limit)`);
     } else {
-      positiveReasons.push(`Moderate proximity (${distanceKm} km)`);
+      positiveReasons.push(`Acceptable proximity (${distanceKm} km)`);
     }
 
-    // Check Energy & Reserve constraint
+    // 2. Check Demand and Usable Energy (Scenario 6: Donor does not have enough energy)
     const demandKwh = receiver.energyDemandKwh > 0 ? receiver.energyDemandKwh : 15;
-    if (usableEnergyKwh >= demandKwh * 0.7) {
+    if (usableEnergyKwh >= demandKwh * 0.75) {
       positiveReasons.push(`Sufficient available energy (${Math.round(usableEnergyKwh)} kWh usable)`);
     } else {
       feasible = false;
       rejectionReasons.push(
-        `Insufficient energy after reserve constraint (${Math.round(usableEnergyKwh)} kWh vs ${demandKwh} kWh needed)`
+        `Rejected — insufficient transferable energy (${Math.round(usableEnergyKwh)} kWh usable vs ${demandKwh} kWh needed)`
       );
     }
 
-    // Check Donor SOC
-    if (donor.soc >= 70) {
-      positiveReasons.push(`Donor maintains safe reserve SOC above ${donor.minReserveSoc}%`);
-    } else if (donorCurrentKwh - (demandKwh / 0.94) < reserveKwh) {
+    // 3. Check Donor SOC & Minimum Reserve (Scenario 5: Donor SOC too low / reserve violation)
+    if (donorCurrentKwh - (demandKwh / 0.94) < reserveKwh || donor.soc <= donor.minReserveSoc) {
       feasible = false;
-      rejectionReasons.push(`Donor SOC would fall below minimum reserve (${donor.minReserveSoc}%)`);
+      rejectionReasons.push(`Rejected — Donor cannot maintain minimum SOC after transfer (${donor.minReserveSoc}% reserve threshold)`);
+    } else if (donor.soc >= 70) {
+      positiveReasons.push(`Donor maintains safe reserve SOC above ${donor.minReserveSoc}%`);
+    } else {
+      positiveReasons.push(`Donor SOC (${Math.round(donor.soc)}%) satisfies reserve`);
     }
 
-    // Check Communication Link
+    // 4. Check Communication Link (Scenario 8: Weak communication / RSSI -95 dBm)
     let commStrengthPct = 95;
     if (donor.commQuality === 'Excellent') {
       commStrengthPct = 98;
       positiveReasons.push('Excellent high-throughput V2X comm link');
     } else if (donor.commQuality === 'Good') {
       commStrengthPct = 85;
-      positiveReasons.push('Stable communication telemetry');
+      positiveReasons.push('Good telemetry link');
     } else if (donor.commQuality === 'Fair') {
       commStrengthPct = 65;
+      positiveReasons.push('Acceptable communication link');
     } else {
-      commStrengthPct = 40;
+      commStrengthPct = 35;
       feasible = false;
-      rejectionReasons.push('Weak or intermittent V2X communication');
+      rejectionReasons.push('Rejected — communication link unreliable (RSSI -95 dBm, poor link)');
+    }
+
+    // 5. Check Transfer Power (Scenario 9: Transfer power insufficient)
+    const requiredPowerKw = receiver.maxTransferPowerKw || 20;
+    if (donor.maxTransferPowerKw < requiredPowerKw && demandKwh >= 20) {
+      feasible = false;
+      rejectionReasons.push(`Rejected — transfer power insufficient (${donor.maxTransferPowerKw} kW < ${requiredPowerKw} kW required)`);
+    } else {
+      positiveReasons.push(`Transfer power acceptable (${donor.maxTransferPowerKw} kW)`);
+    }
+
+    // 6. Check Competing Receiver Allocation (Scenario 25: Two receivers want same donor)
+    if (
+      donor.assignedToId &&
+      donor.assignedToId !== receiver.id &&
+      (donor.assignmentStatus === 'active' || donor.assignmentStatus === 'accepted')
+    ) {
+      feasible = false;
+      rejectionReasons.push('Rejected — Donor energy/power capacity allocated to higher-priority receiver');
     }
 
     // Scoring formula: Energy suitability * Distance suitability * Comm - Losses
@@ -150,30 +172,32 @@ export function evaluateStationsForVehicle(
 
     // Distance checks
     if (distanceKm <= 2.5) {
-      positiveReasons.push(`${distanceKm} km away (quick navigation)`);
+      positiveReasons.push(`Acceptable distance (${distanceKm} km away)`);
     } else {
-      rejectionReasons.push(`${distanceKm} km transit distance`);
+      rejectionReasons.push(`Longer distance (${distanceKm} km transit)`);
     }
 
-    // Charger Availability & Wait time
-    if (st.availableChargers > 0) {
-      positiveReasons.push(`${st.availableChargers}/${st.totalChargers} chargers open`);
+    // Status & Availability checks (Scenario 12: Station full, Scenario 13: Station offline)
+    if (st.status === 'offline') {
+      rejectionReasons.push('Station offline');
+    } else if (st.availableChargers === 0) {
+      rejectionReasons.push('Station rejected — fully occupied (0 available ports)');
+    } else {
+      positiveReasons.push(`Available charger (${st.availableChargers}/${st.totalChargers} open)`);
       if (st.estWaitMinutes <= 3) {
-        positiveReasons.push('Zero or minimal expected wait time');
+        positiveReasons.push('Zero or minimal expected queue wait');
       } else {
         rejectionReasons.push(`${st.estWaitMinutes}-minute estimated queue wait`);
       }
-    } else {
-      rejectionReasons.push('Station fully occupied (0 available ports)');
     }
 
-    // Power
-    if (st.powerKw >= 150) {
-      positiveReasons.push(`High power (${st.powerKw} kW Fast DC)`);
+    // Power checks (Scenario 14: Station power insufficient)
+    if (st.powerKw >= 100) {
+      positiveReasons.push(`Required power (${st.powerKw} kW Fast DC)`);
     } else if (st.powerKw >= 50) {
       positiveReasons.push(`${st.powerKw} kW DC charging`);
     } else {
-      rejectionReasons.push(`Low charging speed (${st.powerKw} kW Level 2)`);
+      rejectionReasons.push(`Charging power insufficient (${st.powerKw} kW Level 2)`);
     }
 
     const selected = false;
@@ -217,15 +241,13 @@ export function getRecommendationForEV(
   const bestDonor = donorEvals.find((d) => d.feasible);
   const bestStation = stationEvals.find((s) => s.availableChargers > 0) || stationEvals[0];
 
-  // Specific scenario enforcement for EV-014 and EV-021
+  // Specific scenario enforcement:
+  // If vehicle has no feasible donor (or is EV-021), route to station
   let recommendV2V = false;
 
-  if (vehicle.id === 'EV-014') {
-    recommendV2V = true;
-  } else if (vehicle.id === 'EV-021') {
-    // Second demo scenario: No feasible donor, map to Station #8
+  if (vehicle.id === 'EV-021') {
     recommendV2V = false;
-  } else if (bestDonor && bestDonor.score >= 5.0 && bestDonor.distanceKm <= 3.5) {
+  } else if (bestDonor && bestDonor.feasible && bestDonor.distanceKm <= 5.0) {
     recommendV2V = true;
   } else {
     recommendV2V = false;
@@ -234,40 +256,44 @@ export function getRecommendationForEV(
   if (recommendV2V && bestDonor) {
     bestDonor.selected = true;
 
-    // Build why this donor
+    // Build why this donor (Scenario 3 & 4)
     const whyPrimary: string[] = [
-      `Closest feasible donor (${bestDonor.distanceKm} km)`,
-      `Sufficient available energy (${bestDonor.availableEnergyKwh} kWh available)`,
-      `${bestDonor.commQuality} communication link (${bestDonor.commStrengthPct}% quality)`,
-      `Donor remains safely above ${bestDonor.donorSoc >= 70 ? '30%' : 'reserve'} reserve SOC`,
-      `Receiver demand (${vehicle.energyDemandKwh || 18} kWh) can be satisfied`,
+      `✓ Sufficient energy (${bestDonor.availableEnergyKwh} kWh available)`,
+      `✓ Close distance (${bestDonor.distanceKm} km away)`,
+      `✓ Good link (${bestDonor.commQuality} communication link, ${bestDonor.commStrengthPct}% quality)`,
+      `✓ SOC reserve satisfied (Donor remains safely above ${bestDonor.donorSoc >= 70 ? '30%' : 'reserve'} reserve)`,
+      `✓ Transfer power acceptable (${bestDonor.deliveredEnergyKwh} kWh expected deliverable)`,
     ];
 
-    // Build why others rejected
+    // Build why others rejected (Scenario 4, 5, 6, 7, 8, 9)
     const whyOthersRejected: RecommendationResult['whyOthersRejected'] = [];
 
-    // Add other donors
+    // Add candidate donors that were not selected
     donorEvals
       .filter((d) => d.donorId !== bestDonor.donorId)
-      .slice(0, 3)
+      .slice(0, 4)
       .forEach((d) => {
+        let reasons = [...d.rejectionReasons];
+        if (reasons.length === 0) {
+          reasons = [`Farther distance (${d.distanceKm} km vs ${bestDonor.distanceKm} km)`];
+        }
         whyOthersRejected.push({
           targetId: d.donorId,
           targetName: `${d.donorId} (${d.donorModel})`,
           type: 'donor',
-          reasons: d.rejectionReasons.length > 0 ? d.rejectionReasons : ['Lower overall score than primary donor'],
+          reasons,
         });
       });
 
-    // Add nearest station as rejected alternative
+    // Add nearest station as alternative (Scenario 15: V2V vs Station)
     if (bestStation) {
       whyOthersRejected.push({
         targetId: bestStation.stationId,
         targetName: bestStation.stationName,
         type: 'station',
         reasons: [
-          `Transit time (${bestStation.estTravelMinutes} min) higher than mobile V2V hookup`,
-          'Grid charging incurs queue and stationary downtime',
+          `Station remains alternative option (${bestStation.distanceKm} km away)`,
+          'V2V preferred: eliminates travel detours and grid queue downtime',
         ],
       });
     }
@@ -279,13 +305,13 @@ export function getRecommendationForEV(
       primaryTargetName: `${bestDonor.donorId} (${bestDonor.donorModel})`,
       whyPrimary,
       whyOthersRejected,
-      summarySentence: `Nearby donor ${bestDonor.donorId} can provide the required energy without requiring a station visit.`,
-      alternativeSummary: 'Station visit avoided; eliminates travel detours and charging station queues.',
+      summarySentence: `Feasible donor is closer (${bestDonor.distanceKm} km) and can satisfy the required energy.`,
+      alternativeSummary: 'Station remains alternative option; eliminates travel detours and charging station queues.',
       donorEvaluations: donorEvals,
       stationEvaluations: stationEvals,
     };
   } else {
-    // Recommend Charging Station
+    // Recommend Charging Station (Scenario 10, 11, 16)
     const targetStation =
       vehicle.id === 'EV-021'
         ? stationEvals.find((s) => s.stationId === 'ST-008') || bestStation
@@ -294,65 +320,45 @@ export function getRecommendationForEV(
     targetStation.selected = true;
 
     const whyPrimary: string[] = [
-      `${targetStation.distanceKm} km away from current GPS position`,
-      `Charger immediately available (${targetStation.availableChargers}/${targetStation.totalChargers} ports open)`,
-      `High-power ${targetStation.powerKw} kW ${targetStation.stationType} meets energy demand`,
-      targetStation.estWaitMinutes === 0
-        ? 'Zero estimated queue wait time'
-        : `Low estimated wait (${targetStation.estWaitMinutes} min)`,
+      `✓ Available charger (${targetStation.availableChargers}/${targetStation.totalChargers} ports open)`,
+      `✓ Required power (${targetStation.powerKw} kW ${targetStation.stationType})`,
+      `✓ Acceptable distance (${targetStation.distanceKm} km transit)`,
+      `✓ V2V unavailable: no feasible donor within range`,
     ];
 
     const whyOthersRejected: RecommendationResult['whyOthersRejected'] = [];
 
-    // If EV-021 specifically or general case, show rejected V2V donors
-    if (vehicle.id === 'EV-021') {
-      whyOthersRejected.push({
-        targetId: 'EV-004',
-        targetName: 'EV-004 (BMW i4)',
-        type: 'donor',
-        reasons: ['Transit distance too far (>5.5 km)', 'High route congestion'],
-      });
-      whyOthersRejected.push({
-        targetId: 'EV-011',
-        targetName: 'EV-011 (Kia EV6)',
-        type: 'donor',
-        reasons: ['Donor SOC falls below 35% reserve constraint after 25 kWh transfer'],
-      });
-      whyOthersRejected.push({
-        targetId: 'EV-009',
-        targetName: 'EV-009 (Polestar 2)',
-        type: 'donor',
-        reasons: ['Communication quality insufficient (Weak link)', 'High packet loss in Santana Row corridor'],
-      });
-      whyOthersRejected.push({
-        targetId: 'ST-007',
-        targetName: 'Blink Station #7 Willow Glen',
-        type: 'station',
-        reasons: ['4.6 km transit away', '20-minute estimated queue wait time', 'Slow 22 kW Level 2 power'],
-      });
-    } else {
-      // General rejected candidates
-      donorEvals.slice(0, 2).forEach((d) => {
-        whyOthersRejected.push({
-          targetId: d.donorId,
-          targetName: `${d.donorId} (${d.donorModel})`,
-          type: 'donor',
-          reasons: d.rejectionReasons.length > 0 ? d.rejectionReasons : ['Distance or reserve constraint limits feasibility'],
-        });
-      });
+    // Why V2V donors rejected (Scenario 10: V2V not possible)
+    whyOthersRejected.push({
+      targetId: 'V2V_DONORS',
+      targetName: 'Candidate Donors (EV-004, EV-011, EV-019)',
+      type: 'donor',
+      reasons: [
+        'No feasible donor within operational range',
+        'Donors too far (>5.0 km limit)',
+        'Insufficient transferable energy after SOC reserve constraint',
+        'Communication link unreliable or packet loss in sector',
+      ],
+    });
 
-      stationEvals
-        .filter((s) => s.stationId !== targetStation.stationId)
-        .slice(0, 2)
-        .forEach((s) => {
-          whyOthersRejected.push({
-            targetId: s.stationId,
-            targetName: s.stationName,
-            type: 'station',
-            reasons: s.rejectionReasons.length > 0 ? s.rejectionReasons : [`Longer distance (${s.distanceKm} km)`],
-          });
+    // Why other stations rejected (Scenario 11 & 12)
+    stationEvals
+      .filter((s) => s.stationId !== targetStation.stationId)
+      .slice(0, 3)
+      .forEach((s) => {
+        let reasons = [...s.rejectionReasons];
+        if (s.availableChargers === 0) {
+          reasons = ['Station rejected — fully occupied (0 available ports)'];
+        } else if (reasons.length === 0) {
+          reasons = [`Longer distance (${s.distanceKm} km vs ${targetStation.distanceKm} km)`];
+        }
+        whyOthersRejected.push({
+          targetId: s.stationId,
+          targetName: s.stationName,
+          type: 'station',
+          reasons,
         });
-    }
+      });
 
     return {
       receiverId: vehicle.id,
@@ -361,8 +367,8 @@ export function getRecommendationForEV(
       primaryTargetName: targetStation.stationName,
       whyPrimary,
       whyOthersRejected,
-      summarySentence: `Station ${targetStation.stationName} recommended due to no feasible donor nearby and immediate high-speed port availability.`,
-      alternativeSummary: 'No nearby donor vehicles meet energy reserve or proximity constraints.',
+      summarySentence: 'Nearest feasible charging option is available while V2V alternatives are infeasible.',
+      alternativeSummary: 'V2V unavailable: no feasible donor meets energy reserve, proximity, and communication constraints.',
       donorEvaluations: donorEvals,
       stationEvaluations: stationEvals,
     };

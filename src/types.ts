@@ -48,7 +48,8 @@ export interface EVVehicle {
   commQuality: 'Excellent' | 'Good' | 'Fair' | 'Weak';
   assignedToId?: string; // EV ID or Station ID
   assignedType?: 'v2v' | 'station' | 'none';
-  assignmentStatus?: 'pending' | 'accepted' | 'navigating' | 'charging' | 'active' | 'completed';
+  assignmentStatus?: AssignmentStatusType | string;
+  declinedDonorIds?: string[];
 }
 
 export interface DonorEvaluation {
@@ -115,13 +116,38 @@ export interface ActiveV2VSession {
   durationSeconds: number;
 }
 
+export type AssignmentStatusType =
+  | 'V2V_PENDING'
+  | 'V2V_REQUESTED'
+  | 'V2V_ACCEPTED'
+  | 'V2V_CONFIRMED'
+  | 'TRANSFER_READY'
+  | 'V2V_INITIALIZING'
+  | 'V2V_ACTIVE'
+  | 'V2V_COMPLETED'
+  | 'DONATION_COMPLETED'
+  | 'ENERGY_RECEIVED'
+  | 'V2V_DECLINED'
+  | 'DONOR_UNAVAILABLE'
+  | 'TRANSFER_PAUSED'
+  | 'TRANSFER_RESUMED'
+  | 'V2V_FAILED'
+  | 'CANCELLED'
+  | 'STATION_RECOMMENDED'
+  | 'STATION_ASSIGNED'
+  | 'NAVIGATING_TO_STATION'
+  | 'ARRIVED_AT_STATION'
+  | 'CHARGING'
+  | 'CHARGING_COMPLETED'
+  | 'UNASSIGNED';
+
 export interface AssignmentRecord {
   evId: string;
   assignedToId: string;
   assignedToName: string;
   type: 'V2V' | 'Charging';
   reason: string;
-  status: 'Pending' | 'Active' | 'Navigating' | 'Charging' | 'Completed';
+  status: AssignmentStatusType | string;
   distanceKm: number;
   energyKwh: number;
   whySelected?: string[];

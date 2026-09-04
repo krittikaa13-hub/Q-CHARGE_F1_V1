@@ -1,4 +1,4 @@
-import { EVVehicle, EVStatus, ActiveV2VSession } from '../types';
+import { EVStatus, ActiveV2VSession, AssignmentStatusType } from '../types';
 
 /**
  * Authoritative vehicle classification function.
@@ -25,14 +25,21 @@ export function classifyVehicleStatus(
     energyDemandKwh: number;
     minReserveSoc: number;
     assignedType?: 'v2v' | 'station' | 'none';
-    assignmentStatus?: 'pending' | 'accepted' | 'navigating' | 'charging' | 'active' | 'completed';
+    assignmentStatus?: AssignmentStatusType | string;
     status?: EVStatus;
   },
   activeSessions: ActiveV2VSession[] = []
 ): EVStatus {
+  // 0. If marked unavailable
+  if (ev.status === 'unavailable' || ev.assignmentStatus === 'DONOR_UNAVAILABLE') {
+    return 'unavailable';
+  }
+
   // 1. If active V2V transfer session
   const isV2VActive =
     ev.assignmentStatus === 'active' ||
+    ev.assignmentStatus === 'V2V_ACTIVE' ||
+    ev.assignmentStatus === 'V2V_INITIALIZING' ||
     ev.status === 'v2v_active' ||
     activeSessions.some(
       (s) => s.status === 'active' && (s.donorId === ev.id || s.receiverId === ev.id)
@@ -47,7 +54,10 @@ export function classifyVehicleStatus(
     ev.assignedType === 'station' ||
     ev.status === 'charging_station' ||
     ev.assignmentStatus === 'charging' ||
-    ev.assignmentStatus === 'navigating'
+    ev.assignmentStatus === 'navigating' ||
+    ev.assignmentStatus === 'CHARGING' ||
+    ev.assignmentStatus === 'NAVIGATING_TO_STATION' ||
+    ev.assignmentStatus === 'ARRIVED_AT_STATION'
   ) {
     return 'charging_station';
   }

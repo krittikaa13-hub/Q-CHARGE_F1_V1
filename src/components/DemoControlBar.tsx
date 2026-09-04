@@ -18,6 +18,11 @@ interface DemoControlBarProps {
   onAcceptV2V: () => void;
   onStartTransfer: () => void;
   onSendToStation: () => void;
+  onDeclineV2V?: () => void;
+  onSimulateFailure?: () => void;
+  onStepDemoEvent?: () => void;
+  currentDemoStep?: number;
+  lastActionMessage?: string;
   currentReceiver: EVVehicle | null;
   currentDonor: EVVehicle | null;
   activeSession: ActiveV2VSession | null;
@@ -33,6 +38,11 @@ export const DemoControlBar: React.FC<DemoControlBarProps> = ({
   onAcceptV2V,
   onStartTransfer,
   onSendToStation,
+  onDeclineV2V,
+  onSimulateFailure,
+  onStepDemoEvent,
+  currentDemoStep = 0,
+  lastActionMessage = 'System ready.',
   currentReceiver,
   currentDonor,
   activeSession,
@@ -42,42 +52,36 @@ export const DemoControlBar: React.FC<DemoControlBarProps> = ({
   return (
     <div
       id="demo-control-bar"
-      className="bg-slate-900 border-b border-slate-800 px-3 py-2 flex flex-wrap items-center justify-between gap-2 z-20"
+      className="bg-slate-900 border-b border-slate-800 px-3 py-2 flex flex-col md:flex-row items-stretch md:items-center justify-between gap-2 z-20"
     >
-      {/* Label and Status */}
-      <div className="flex items-center gap-2">
-        <div className="flex items-center gap-1.5 px-2 py-0.5 rounded bg-cyan-950 border border-cyan-800 text-[11px] font-mono font-bold text-cyan-300">
+      {/* Label, Status, and Action Narrative */}
+      <div className="flex items-center gap-2 flex-wrap">
+        <div className="flex items-center gap-1.5 px-2 py-0.5 rounded bg-cyan-950 border border-cyan-800 text-[11px] font-mono font-bold text-cyan-300 shrink-0">
           <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse"></span>
           <span>DEMO CONTROLS</span>
         </div>
-        <div className="hidden sm:flex items-center gap-2 text-xs font-mono text-slate-400">
-          {activeSession ? (
-            <span className="text-purple-400 font-semibold flex items-center gap-1">
-              <Zap className="w-3.5 h-3.5" />
-              <span>V2V Active ({activeSession.progressPct}%)</span>
-            </span>
-          ) : isV2VPending ? (
-            <span className="text-amber-400 font-semibold flex items-center gap-1">
-              <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping"></span>
-              <span>V2V Proposed / Pending</span>
-            </span>
-          ) : isStationNavigating ? (
-            <span className="text-orange-400 font-semibold flex items-center gap-1">
-              <Navigation className="w-3.5 h-3.5" />
-              <span>Station Mapped</span>
-            </span>
-          ) : currentReceiver ? (
-            <span className="text-rose-400">
-              Receiver: {currentReceiver.id} ({Math.round(currentReceiver.soc)}% SOC)
-            </span>
-          ) : (
-            <span>Ready</span>
-          )}
+
+        {/* Narrative / Last Action Message */}
+        <div className="text-xs font-mono text-slate-300 max-w-xl truncate">
+          <span className="text-slate-500 mr-1.5 font-bold">STATUS:</span>
+          <span className="text-emerald-300">{lastActionMessage}</span>
         </div>
       </div>
 
-      {/* Seven Required Demo Controls (Requirement 14) */}
+      {/* Control Buttons (Scenarios 1-37) */}
       <div className="flex items-center gap-1.5 flex-wrap">
+        {/* STEP STORY EVENT (Scenario 37) */}
+        {onStepDemoEvent && (
+          <button
+            id="btn-demo-step-event"
+            onClick={onStepDemoEvent}
+            title="Step sequentially through the 13 events of Scenario 37"
+            className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-indigo-950 hover:bg-indigo-900 text-indigo-300 text-xs font-mono font-bold border border-indigo-700 transition-colors shadow"
+          >
+            <span>▶ EVENT {currentDemoStep > 0 ? `${currentDemoStep}/13` : '1-13'}</span>
+          </button>
+        )}
+
         {/* 1. RESET DEMO */}
         <button
           id="btn-demo-reset"
@@ -133,6 +137,18 @@ export const DemoControlBar: React.FC<DemoControlBarProps> = ({
           <span>ACCEPT V2V</span>
         </button>
 
+        {/* DECLINE V2V (Scenario 19) */}
+        {onDeclineV2V && (
+          <button
+            id="btn-demo-decline-v2v"
+            onClick={onDeclineV2V}
+            title="Donor declines request; system automatically re-evaluates or reroutes to station (Scenario 19)"
+            className="flex items-center gap-1 px-2 py-1 rounded-lg bg-red-950/60 hover:bg-red-900/80 text-red-300 text-xs font-mono font-semibold border border-red-800 transition-colors"
+          >
+            <span>DECLINE</span>
+          </button>
+        )}
+
         {/* 6. START TRANSFER / ADVANCE */}
         <button
           id="btn-demo-start-transfer"
@@ -143,6 +159,18 @@ export const DemoControlBar: React.FC<DemoControlBarProps> = ({
           <Zap className="w-3.5 h-3.5 text-amber-400" />
           <span>START TRANSFER</span>
         </button>
+
+        {/* FAIL TRANSFER (Scenario 22) */}
+        {onSimulateFailure && activeSession && (
+          <button
+            id="btn-demo-fail-transfer"
+            onClick={onSimulateFailure}
+            title="Simulate mid-transfer failure (comm lost); system auto-reroutes receiver to station (Scenario 22)"
+            className="flex items-center gap-1 px-2 py-1 rounded-lg bg-rose-950 hover:bg-rose-900 text-rose-300 text-xs font-mono font-semibold border border-rose-700 transition-colors"
+          >
+            <span>FAIL TRANSFER</span>
+          </button>
+        )}
 
         {/* 7. SEND TO STATION */}
         <button
