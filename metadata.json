@@ -1,0 +1,6 @@
+{
+  "name": "Q-FLEET: Real-Time Map & V2V Dispatch Prototype",
+  "description": "Live fleet dispatch prototype featuring simulated real-time EV telemetry, dynamic vehicle-to-vehicle (V2V) energy matching, charging station assignment, and deterministic decision explanations.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
